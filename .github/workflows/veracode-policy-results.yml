@@ -43,7 +43,7 @@ jobs:
           chmod +x helper/scripts/filter-policy-results.sh
           mkdir -p /tmp/output
           FILTER_TYPE=${{ inputs.filter_mitigated_flaws == 'true' && 'unmitigated_policy_violations' || 'policy_violations' }}
-          ./helper/scripts/filter-policy-sresults.sh "${{ inputs.profile_name }}" --filter "$FILTER_TYPE" --output-file /tmp/output/policy_flaws.json
+          ./helper/scripts/filter-policy-results.sh "${{ inputs.profile_name }}" --filter "$FILTER_TYPE" --output-file /tmp/output/policy_flaws.json
 
       - name: Upload filtered policy results
         uses: actions/upload-artifact@v4
