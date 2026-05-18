@@ -1,0 +1,53 @@
+name: 'Veracode Policy Results'
+on:
+  workflow_call:
+    inputs:
+      repository_owner:
+        description: 'Repository owner of original commit (provided by GitHub app via `github.event.client_payload.repository.owner`)'
+        required: true
+        type: string
+      profile_name:
+        description: 'Veracode application profile name for the scan'
+        required: true
+        type: string
+      filter_mitigated_flaws:
+        description: 'Flag to filter out mitigated policy violations from results'
+        required: true
+        type: string
+
+jobs:
+  veracode-policy-results:
+    # needs: policy_scan
+    runs-on: ubuntu-latest
+    container:
+      image: veracode/api-signing
+      env:
+        VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
+        VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
+      options: --user=1001
+    if: always()
+    name: Filter unmitigated results
+    steps:
+      - name: Checkout filter script
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository_owner }}/veracode
+          sparse-checkout: |
+            /helper/scripts/filter-policy-results.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Filter policy scan results
+        if: always()
+        run: |
+          chmod +x helper/scripts/filter-policy-results.sh
+          mkdir -p /tmp/output
+          FILTER_TYPE=${{ inputs.filter_mitigated_flaws == 'true' && 'unmitigated_policy_violations' || 'policy_violations' }}
+          ./helper/scripts/filter_policy_results.sh "${{ inputs.profile_name }}" --filter "$FILTER_TYPE" --output-file /tmp/output/policy_flaws.json
+
+      - name: Upload filtered policy results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: policy-flaws
+          path: /tmp/output
+          overwrite: true

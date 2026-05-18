@@ -118,6 +118,16 @@ jobs:
           head_sha: ${{ inputs.sha }}
           gitRepositoryUrl: ${{ github.server_url }}/${{ inputs.source_repository }}
 
+  prepare-policy-results:
+    needs: [policy_scan]
+    if: always()
+    uses: ./.github/workflows/veracode-policy-results.yml
+    with:
+      repository_owner: ${{ inputs.owner }}
+      profile_name: ${{ inputs.profile_name }}
+      filter_mitigated_flaws: ${{ inputs.filter_mitigated_flaws }}
+    secrets: inherit
+
   veracode-remove-sandbox:
     needs: policy_scan
     runs-on: ${{ fromJSON(inputs.default_runs_on) }}
@@ -133,7 +143,7 @@ jobs:
           sandboxname: GitHub App Scans-${{ github.event.client_payload.user_config.sandbox_scan.branch }}
 
   code-scanning-alert:
-    needs: policy_scan
+    needs: [policy_scan, prepare-policy-results]
     runs-on: ${{ fromJSON(inputs.default_runs_on) }}
     if: ${{ inputs.create_code_scanning_alert && always() }}
     name: Create code scanning alerts
@@ -163,7 +173,7 @@ jobs:
           githubToken: ${{ inputs.token }}
 
   create-issues:
-    needs: policy_scan
+    needs: [policy_scan, prepare-policy-results]
     if: ${{ inputs.create_issue && always() }}
     runs-on: ${{ fromJSON(inputs.default_runs_on) }}
     name: Create issues
