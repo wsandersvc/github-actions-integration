@@ -1,57 +1,78 @@
 name: Veracode Static Sandbox Scanner
-run-name: Veracode Sandbox Scan - ${{ github.event.client_payload.workflow_name }}
-
-concurrency:
-  group: ${{ github.event.client_payload.event_type }}-${{ github.event.client_payload.repository.name }}-${{ github.event.client_payload.repository.branch }}
-  cancel-in-progress: true
 
 on:
-  repository_dispatch:
-    types:
-      - source-code-sandbox-scan
-      - dot-net-sandbox-scan
-      - go-sandbox-scan
-      - tsql-sandbox-scan
-      - plsql-sandbox-scan
-      - php-sandbox-scan
-      - scala-sandbox-scan
-      - dart-sandbox-scan
-      - java-sandbox-scan
-      - unidentified-lang-sandbox-scan
-      - ruby-sandbox-scan
-      - apex-sandbox-scan
-      - vb6-sandbox-scan
-      - perl-sandbox-scan
+  workflow_call:
+    inputs:
+      profile_name:
+        required: true
+        type: string
+      policy_name:
+        required: true
+        type: string
+      modules_to_scan:
+        required: true
+        type: string
+      owner:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+      token:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      create_code_scanning_alert:
+        required: true
+        type: boolean
+      create_issue:
+        required: true
+        type: boolean
+      check_run_id:
+        required: true
+        type: string
+      source_repository:
+          required: true
+          type: string
+      break_build_policy_findings: 
+          required: true
+          type: string
+      break_build_on_error: 
+          required: true
+          type: string
+      filter_mitigated_flaws: 
+          required: true
+          type: string
+      language:
+        required: true
+        type: string
+      default_runs_on:
+        required: true
+        type: string
+      debug:
+        required: false
+        type: string
+      branch:
+        required: true
+        type: string
 
 jobs:
-  cleanup:
-    uses: ./.github/workflows/veracode-clean-up.yml
-    with:
-      runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
-
-  build:
-    needs: cleanup
-    uses: ./.github/workflows/veracode-build-artifact-for-scanning.yml
-    with:
-      repository: ${{ github.event.client_payload.repository.full_name }}
-      ref: ${{ github.event.client_payload.sha }}
-      token: ${{ github.event.client_payload.token }}
-      event_name: ${{ github.event.action }}
-      build_runs_on: ${{ github.event.client_payload.user_config.build_runs_on }}
-      build_packager_image: ${{ github.event.client_payload.user_config.build_packager_image }}
-      build_predependency_command: ${{ github.event.client_payload.user_config.build_predependency_command }}
-      ruby_version: ${{ github.event.client_payload.user_config.ruby_version }}
-      bundle_version: ${{ github.event.client_payload.user_config.bundle_version }}
-      default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
-
   sandbox_scan:
-    needs: build
-    runs-on: ${{ fromJSON(github.event.client_payload.user_config.default_runs_on) }}
+    runs-on: ${{ fromJSON(inputs.default_runs_on) }}
     name: sandbox scan
 
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.owner }}/${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          token: ${{ inputs.token }}
 
       # get the compiled binary from a previous job
       - name: get archive
@@ -65,17 +86,52 @@ jobs:
         uses: veracode/uploadandscan-action@v0.2.3
         id: upload_and_scan
         with:
-          appname: ${{ github.event.client_payload.user_config.profile_name }}
+          appname: ${{ inputs.profile_name }}
           createprofile: true
-          policy: ${{ github.event.client_payload.policy_name }}
+          policy: ${{ inputs.policy_name }}
           version: '${{ github.run_id }}'
           filepath: ./veracode_artifact_directory/
           vid: '${{ secrets.VERACODE_API_ID }}'
           vkey: '${{ secrets.VERACODE_API_KEY }}'
           createsandbox: true
-          sandboxname: GitHub App Scans-${{ github.event.client_payload.repository.branch }}
-          failbuild: ${{ github.event.client_payload.user_config.break_build_policy_findings }}
-          gitRepositoryUrl: ${{ github.server_url }}/${{ github.event.client_payload.repository.full_name }}
+          sandboxname: GitHub App Scans-${{ inputs.branch }}
+          failbuild: ${{ inputs.break_build_policy_findings }}
+          gitRepositoryUrl: ${{ github.server_url }}/${{ inputs.source_repository }}
           deleteincompletescan: true
           workflowApp: true
-          debug: ${{ github.event.client_payload.user_config.debug }}
+          debug: ${{ inputs.debug }}
+
+  update-checks-status:
+    runs-on: ${{ fromJson(inputs.default_runs_on) }}
+    needs: sandbox_scan
+    if: always()
+    steps:
+     - name: Update check
+       id: update_check_status
+       shell: bash
+       env:
+        BREAK_BUILD_ON_ERROR: ${{ inputs.break_build_on_error }}
+        BREAK_BUILD_ON_POLICY: ${{ inputs.break_build_policy_findings }}
+       run: |
+            success_count=0
+            conclusion="failure"
+            # Convert JSON string to a proper format for jq processing
+            echo '${{ toJSON(needs) }}' | jq -c 'to_entries[]' | while read -r job; do
+              status=$(echo "$job" | jq -r '.value.result')
+              echo "$status"
+              if [ "$status" = "success" ]; then
+                success_count=$((success_count + 1))
+                echo '{"status": "completed", "conclusion": "success"}' > payload.txt
+              elif [ "$status" = "failure" ]; then
+                if [ "$BREAK_BUILD_ON_ERROR" = "false" && "$BREAK_BUILD_ON_POLICY" = "false" ]; then
+                  echo '{"status": "completed", "conclusion": "success"}' > payload.txt
+                else
+                  echo '{"status": "completed", "conclusion": "failure"}' > payload.txt
+                fi
+              fi
+              curl -X PATCH \
+                -H "Authorization: Bearer ${{ inputs.token }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ inputs.owner }}/${{ inputs.repo }}/check-runs/${{ inputs.check_run_id }} \
+                -d @"payload.txt"
+            done
