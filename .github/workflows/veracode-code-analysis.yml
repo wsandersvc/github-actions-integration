@@ -9,34 +9,34 @@ concurrency:
 on:
   repository_dispatch:
     types:
-      - source-code-pipeline-scan
       - source-code-policy-scan
-      - dot-net-pipeline-scan
       - dot-net-policy-scan
-      - go-pipeline-scan
       - go-policy-scan
-      - tsql-pipeline-scan
       - tsql-policy-scan
-      - plsql-pipeline-scan
       - plsql-policy-scan
-      - php-pipeline-scan
       - php-policy-scan
-      - scala-pipeline-scan
       - scala-policy-scan
-      - dart-pipeline-scan
       - dart-policy-scan
-      - java-pipeline-scan
       - java-policy-scan
-      - unidentified-lang-pipeline-scan
       - unidentified-lang-policy-scan
-      - ruby-pipeline-scan
       - ruby-policy-scan
-      - apex-pipeline-scan
       - apex-policy-scan
-      - perl-pipeline-scan
       - perl-policy-scan
-      - vb6-pipeline-scan
       - vb6-policy-scan
+      - source-code-sandbox-scan
+      - dot-net-sandbox-scan
+      - go-sandbox-scan
+      - tsql-sandbox-scan
+      - plsql-sandbox-scan
+      - php-sandbox-scan
+      - scala-sandbox-scan
+      - dart-sandbox-scan
+      - java-sandbox-scan
+      - unidentified-lang-sandbox-scan
+      - ruby-sandbox-scan
+      - apex-sandbox-scan
+      - vb6-sandbox-scan
+      - perl-sandbox-scan
 
 jobs:
   cleanup:
@@ -48,7 +48,7 @@ jobs:
     needs: cleanup
     uses: ./.github/workflows/veracode-check-run.yml
     with:
-      check_run_name: ${{ github.workflow }} - ${{ contains(github.event.action, 'policy') && 'Policy' || 'Pipeline' }}
+      check_run_name: ${{ github.workflow }} - ${{ contains(github.event.action, 'policy') && 'Policy' || contains(github.event.action, 'sandbox') && 'Sandbox' || 'Pipeline' }}
       head_sha: ${{ github.event.client_payload.sha }}
       repository_owner: ${{ github.event.client_payload.repository.owner }}
       repository_name: ${{ github.event.client_payload.repository.name }}
@@ -109,30 +109,30 @@ jobs:
       default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
       debug: ${{ github.event.client_payload.user_config.debug }}
 
-  pipeline_scan:
-    # needs the build step before this job will start running
-    needs: [build, register]
-    if: contains(github.event.action, 'pipeline')
-    uses: ./.github/workflows/veracode-pipeline-scan.yml
-    with:
-      policy_name: ${{ github.event.client_payload.policy_name }}
-      create_code_scanning_alert: ${{ github.event.client_payload.user_config.create_code_scanning_alert }}
-      owner: ${{ github.event.client_payload.repository.owner }}
-      repo: ${{ github.event.client_payload.repository.name }}
-      sha: ${{ github.event.client_payload.sha }}
-      token: ${{ github.event.client_payload.token }}
-      ref: ${{ github.event.client_payload.user_config.ref }}
-      create_issue: ${{ github.event.client_payload.user_config.create_issue }}
-      source_repository: ${{ github.event.client_payload.repository.full_name }}
-      check_run_id: ${{ needs.register.outputs.run_id }}
-      profile_name: ${{ github.event.client_payload.user_config.profile_name }}
-      break_build_policy_findings: ${{ github.event.client_payload.user_config.break_build_policy_findings }}
-      break_build_on_error: ${{ github.event.client_payload.user_config.break_build_on_error }}
-      filter_mitigated_flaws: ${{ github.event.client_payload.user_config.filter_mitigated_flaws }}
-      language: ${{ github.event.client_payload.repository.language }}
-      default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
-      debug: ${{ github.event.client_payload.user_config.debug }}
-    secrets: inherit
+  # pipeline_scan:
+  #   # needs the build step before this job will start running
+  #   needs: [build, register]
+  #   if: contains(github.event.action, 'pipeline')
+  #   uses: ./.github/workflows/veracode-pipeline-scan.yml
+  #   with:
+  #     policy_name: ${{ github.event.client_payload.policy_name }}
+  #     create_code_scanning_alert: ${{ github.event.client_payload.user_config.create_code_scanning_alert }}
+  #     owner: ${{ github.event.client_payload.repository.owner }}
+  #     repo: ${{ github.event.client_payload.repository.name }}
+  #     sha: ${{ github.event.client_payload.sha }}
+  #     token: ${{ github.event.client_payload.token }}
+  #     ref: ${{ github.event.client_payload.user_config.ref }}
+  #     create_issue: ${{ github.event.client_payload.user_config.create_issue }}
+  #     source_repository: ${{ github.event.client_payload.repository.full_name }}
+  #     check_run_id: ${{ needs.register.outputs.run_id }}
+  #     profile_name: ${{ github.event.client_payload.user_config.profile_name }}
+  #     break_build_policy_findings: ${{ github.event.client_payload.user_config.break_build_policy_findings }}
+  #     break_build_on_error: ${{ github.event.client_payload.user_config.break_build_on_error }}
+  #     filter_mitigated_flaws: ${{ github.event.client_payload.user_config.filter_mitigated_flaws }}
+  #     language: ${{ github.event.client_payload.repository.language }}
+  #     default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
+  #     debug: ${{ github.event.client_payload.user_config.debug }}
+  #   secrets: inherit
 
   policy_scan:
     needs: [build, register]
@@ -157,4 +157,30 @@ jobs:
       language: ${{ github.event.client_payload.repository.language }}
       default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
       debug: ${{ github.event.client_payload.user_config.debug }}
+    secrets: inherit
+
+  sandbox_scan:
+    needs: [build, register]
+    if: contains(github.event.action, 'sandbox')
+    uses: ./.github/workflows/veracode-sandbox-scan.yml
+    with:
+      profile_name: ${{ github.event.client_payload.user_config.profile_name }}
+      policy_name: ${{ github.event.client_payload.policy_name }}
+      modules_to_scan: ${{ github.event.client_payload.modules_to_scan }}
+      owner: ${{ github.event.client_payload.repository.owner }}
+      repo: ${{ github.event.client_payload.repository.name }}
+      sha: ${{ github.event.client_payload.sha }}
+      token: ${{ github.event.client_payload.token }}
+      ref: ${{ github.event.client_payload.user_config.ref }}
+      create_issue: ${{ github.event.client_payload.user_config.create_issue }}
+      create_code_scanning_alert: ${{ github.event.client_payload.user_config.create_code_scanning_alert }}
+      source_repository: ${{ github.event.client_payload.repository.full_name }}
+      check_run_id: ${{ needs.register.outputs.run_id }}
+      break_build_policy_findings: ${{ github.event.client_payload.user_config.break_build_policy_findings }}
+      break_build_on_error: ${{ github.event.client_payload.user_config.break_build_on_error }}
+      filter_mitigated_flaws: ${{ github.event.client_payload.user_config.filter_mitigated_flaws }}
+      language: ${{ github.event.client_payload.repository.language }}
+      default_runs_on: ${{ github.event.client_payload.user_config.default_runs_on }}
+      debug: ${{ github.event.client_payload.user_config.debug }}
+      branch: ${{ github.event.client_payload.repository.branch }}
     secrets: inherit
